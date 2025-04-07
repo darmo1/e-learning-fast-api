@@ -35,3 +35,12 @@ __pycache__/
 *.swo
 .DS_Store
 Thumbs.db
+
+
+/node_module
+
+
+migrations/
+
+db.sqlite3
+db*.
