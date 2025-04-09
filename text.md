@@ -10,7 +10,7 @@
 └── venv/               # Tu entorno virtual
 
 
-uvicorn app.main:app --port 3001 --reload
+uvicorn app.main:app --port 3005 --reload
 alembic init migrations
 alembic revision --autogenerate -m "Initial migration"
 

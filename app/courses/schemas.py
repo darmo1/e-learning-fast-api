@@ -20,4 +20,4 @@ class CourseResponse(CourseBase):
     id: int
 
     class Config:
-        orm_mode = True  # Esta opción permite que los objetos SQLModel se puedan convertir a Pydantic models de manera sencilla
+        from_attributes = True  # Esta opción permite que los objetos SQLModel se puedan convertir a Pydantic models de manera sencilla

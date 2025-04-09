@@ -33,7 +33,7 @@ def get_enrollments_by_user(db: SessionDeep, user_id: int):
     enrollments = db.exec(statement).all()
 
     if not enrollments:
-        return None
+        return []
 
     results = []
     for enrollment in enrollments:
