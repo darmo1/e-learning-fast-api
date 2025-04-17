@@ -10,8 +10,10 @@ from app.checkout.routes import checkout_router
 from app.common.database import create_all_tables
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-import os
 load_dotenv()
+import os
+
+
 database_url = os.getenv("HOST_FRONTEND", "http://localhost:3000")
 
 app = FastAPI()
@@ -24,7 +26,7 @@ app.add_middleware(
 )
 
 create_all_tables(app)
-
+print("Directorio de trabajo actual:", os.getcwd())
 api_v1= '/api/v1'
 
 app.include_router(user_router, prefix=api_v1, tags=["users"])

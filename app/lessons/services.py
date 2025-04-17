@@ -1,7 +1,9 @@
+from fastapi import HTTPException
 from sqlmodel import SQLModel, select
 from app.lessons.models import Lesson
-from app.lessons.schemas import LessonCreate, LessonResponse
+from app.lessons.schemas import LessonCreate, LessonResponse, LessonUpdate
 from app.common.database import SessionDeep 
+from datetime import datetime, timezone
 
 
 def create_lesson(db: SessionDeep, lesson: LessonCreate) -> LessonResponse:
@@ -30,3 +32,23 @@ def get_demo_lessons_by_course_id(db: SessionDeep, course_id: int):
         "demo": demo,
         "content": content,
     }
+
+def update_lesson(db: SessionDeep, lesson_id: int, lesson_update: LessonUpdate) -> LessonResponse:
+    lesson = db.get(Lesson, lesson_id)
+
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lección no encontrada")
+
+    update_data = lesson_update.model_dump(exclude_unset=True)
+
+    if update_data:
+        for key, value in update_data.items():
+            setattr(lesson, key, value)
+
+        lesson.updated_at = datetime.now(timezone.utc)
+
+        db.add(lesson)
+        db.commit()
+        db.refresh(lesson)
+
+    return lesson

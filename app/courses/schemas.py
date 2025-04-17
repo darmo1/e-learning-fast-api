@@ -21,3 +21,16 @@ class CourseResponse(CourseBase):
 
     class Config:
         from_attributes = True  # Esta opción permite que los objetos SQLModel se puedan convertir a Pydantic models de manera sencilla
+
+
+
+
+class CourseEdit(SQLModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True

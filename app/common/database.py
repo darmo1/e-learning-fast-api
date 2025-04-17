@@ -1,12 +1,11 @@
 from sqlmodel import Session, create_engine, SQLModel
 from typing import Annotated
 from fastapi import Depends, FastAPI
+from dotenv import load_dotenv
+load_dotenv()
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///db.sqlite3")
-
-sqlite_name = "db.sqlite3"
-sqlite_url = f"sqlite:///{sqlite_name}"
+DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL, echo=True)
 
 #Create tables
