@@ -7,6 +7,7 @@ from app.comments.routes import comments_router
 from app.enrollments.routes import enrollment_router
 from app.auth.routes import auth_router
 from app.checkout.routes import checkout_router
+from app.analytics.routes import analytics_router
 from app.common.database import create_all_tables
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -26,7 +27,6 @@ app.add_middleware(
 )
 
 create_all_tables(app)
-print("Directorio de trabajo actual:", os.getcwd())
 api_v1= '/api/v1'
 
 app.include_router(user_router, prefix=api_v1, tags=["users"])
@@ -36,6 +36,7 @@ app.include_router(comments_router, prefix=api_v1, tags=["comments"])
 app.include_router(enrollment_router, prefix=api_v1, tags=["enrollments"])   
 app.include_router(auth_router, prefix=api_v1, tags=["auth"])  
 app.include_router(checkout_router, prefix=api_v1, tags=["checkout"]) 
+app.include_router(analytics_router, prefix=api_v1, tags=["analytics"]) 
 
 
 @app.get("/")
