@@ -13,7 +13,7 @@ class Lesson(SQLModel, table=True):
     video_url: str
     is_free: bool = Field(default=False)
     course_id: int = Field(foreign_key="course.id")
-   
+    position: Optional[int] = None ## Nueva columna para la posición de la lección
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
 

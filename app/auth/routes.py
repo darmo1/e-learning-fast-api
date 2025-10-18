@@ -48,7 +48,7 @@ def set_auth_cookies(
         secure=SECURE_COOKIE,    # True en producción (HTTPS)
         samesite=COOKIE_SAMESITE,# 'lax' recomendado
         path="/",                # Accesible en todo el sitio/API
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES , # Tiempo de vida en segundos
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES  * 60, # Tiempo de vida en segundos
         domain=DOMAIN            # Omitir para localhost, especificar en prod si es necesario
     )
     if refresh_token:
@@ -102,8 +102,6 @@ async def login(response: Response, form_data: LoginRequest, db: SessionDeep):
         expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
     
-
-
 
     response = JSONResponse(
         content={

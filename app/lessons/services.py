@@ -7,7 +7,15 @@ from datetime import datetime, timezone
 
 
 def create_lesson(db: SessionDeep, lesson: LessonCreate) -> LessonResponse:
-   new_lesson = Lesson(**lesson.model_dump()) 
+   
+   result = db.exec(
+        select(Lesson.position).where(Lesson.course_id == lesson.course_id)
+    ).all()
+
+   max_position = max([pos for pos in result if pos is not None], default=0)
+   next_position = max_position + 1
+
+   new_lesson = Lesson(**lesson.model_dump(), position=next_position) 
    db.add(new_lesson)
    db.commit()
    db.refresh(new_lesson)
