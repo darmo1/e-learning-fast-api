@@ -30,5 +30,5 @@ def get_lessons_by_course_id(course_id: str,  db: SessionDeep, token_data:dict =
 
 
 @lessons_router.get("/{course_id}/demo")
-def get_demo_lessons_by_course_id(course_id: str,  db: SessionDeep, token_data:dict = Depends(get_current_user)):
+def get_demo_lessons_by_course_id(course_id: str,  db: SessionDeep):
     return services.get_demo_lessons_by_course_id(db, int(course_id))

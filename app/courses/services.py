@@ -56,6 +56,7 @@ def get_courses(db: SessionDeep, user_id: int):
 def get_all_courses(db: SessionDeep) -> list[CourseResponse]:
     """Obtenemos todos los cursos de la base de datos"""
     courses = db.exec(select(Course)).all()
+    return courses
 
 
 def get_courses_by_instructor(db: SessionDeep, user_id: int):

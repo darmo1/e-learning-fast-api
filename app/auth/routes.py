@@ -34,48 +34,46 @@ COOKIE_SAMESITE = "lax"
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
+
 # --- Función Helper para establecer Cookies ---
 def set_auth_cookies(
     response: Response,
     access_token: str,
-    refresh_token: str | None = None # Hacer refresh_token opcional
+    refresh_token: str | None = None,  # Hacer refresh_token opcional
 ):
     """Establece las cookies de autenticación en la respuesta."""
     response.set_cookie(
         key="access_token",
         value=access_token,
-        httponly=True,           # ¡Esencial! No accesible por JS
-        secure=SECURE_COOKIE,    # True en producción (HTTPS)
-        samesite=COOKIE_SAMESITE,# 'lax' recomendado
-        path="/",                # Accesible en todo el sitio/API
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES  * 60, # Tiempo de vida en segundos
-        domain=DOMAIN            # Omitir para localhost, especificar en prod si es necesario
+        httponly=True,  # ¡Esencial! No accesible por JS
+        secure=SECURE_COOKIE,  # True en producción (HTTPS)
+        samesite=COOKIE_SAMESITE,  # 'lax' recomendado
+        path="/",  # Accesible en todo el sitio/API
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Tiempo de vida en segundos
+        domain=DOMAIN,  # Omitir para localhost, especificar en prod si es necesario
     )
     if refresh_token:
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
-            httponly=True,           # ¡Esencial!
-            secure=SECURE_COOKIE,    # True en producción (HTTPS)
-            samesite=COOKIE_SAMESITE,# 'lax' recomendado
+            httponly=True,  # ¡Esencial!
+            secure=SECURE_COOKIE,  # True en producción (HTTPS)
+            samesite=COOKIE_SAMESITE,  # 'lax' recomendado
             # MUY IMPORTANTE: Limitar el path SOLO al endpoint de refresh
             path="/auth/refresh",
-            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60, # Tiempo de vida largo
-            domain=DOMAIN            # Omitir para localhost, especificar en prod si es necesario
+            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # Tiempo de vida largo
+            domain=DOMAIN,  # Omitir para localhost, especificar en prod si es necesario
         )
+
 
 # --- Función Helper para limpiar Cookies ---
 def clear_auth_cookies(response: Response):
     """Limpia/elimina las cookies de autenticación."""
-    response.delete_cookie(
-        key="access_token",
-        path="/",
-        domain=DOMAIN
-    )
+    response.delete_cookie(key="access_token", path="/", domain=DOMAIN)
     response.delete_cookie(
         key="refresh_token",
-        path="/auth/refresh", # Debe coincidir con el path usado al setear
-        domain=DOMAIN
+        path="/auth/refresh",  # Debe coincidir con el path usado al setear
+        domain=DOMAIN,
     )
 
 
@@ -101,7 +99,6 @@ async def login(response: Response, form_data: LoginRequest, db: SessionDeep):
         data={"sub": user.email},
         expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
-    
 
     response = JSONResponse(
         content={
@@ -132,7 +129,6 @@ async def login(response: Response, form_data: LoginRequest, db: SessionDeep):
     # )
     set_auth_cookies(response, access_token, refresh_token)
 
-
     return response  # Retornamos la respuesta con la cookie
 
 
@@ -143,7 +139,13 @@ def register(user_data: UserCreate, db: SessionDeep):
     existing_user = db.exec(statement).first()
 
     if existing_user:
-        raise HTTPException(status_code=400, detail="User already exists")
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "Usuario ya registrado",
+                "message": "Usuario ya registrado",
+            },
+        )
 
     hashed_password = hash_password(user_data.password)
     user = User(
@@ -169,15 +171,17 @@ def register(user_data: UserCreate, db: SessionDeep):
 
 @auth_router.post("/refresh")
 async def refresh_token(
-    response: Response, # Inyecta Response para setear la nueva cookie
+    response: Response,  # Inyecta Response para setear la nueva cookie
     db: SessionDeep,
     refresh_token: str | None = Cookie(None, alias="refresh_token"),
 ):
-  
+
     if not refresh_token:
         # No necesitas limpiar cookies aquí, no había refresh token válido
-        raise HTTPException(status_code=401, detail="Refresh token cookie no encontrada")
-    
+        raise HTTPException(
+            status_code=401, detail="Refresh token cookie no encontrada"
+        )
+
     if not is_valid_refresh_token(refresh_token):
         clear_auth_cookies(response)
         raise HTTPException(status_code=401, detail="Refresh token invalid or expired")
@@ -198,7 +202,6 @@ async def refresh_token(
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
-   
     response = JSONResponse(content={"access_token": new_access_token})
     # response.set_cookie(
     #     key="access_token",
@@ -216,4 +219,6 @@ async def refresh_token(
 async def logout(response: Response):
     """Limpia/elimina las cookies de autenticación."""
     clear_auth_cookies(response)
-    return JSONResponse(status_code=200, content={"success": True, "message": "Logout exitoso"})
+    return JSONResponse(
+        status_code=200, content={"success": True, "message": "Logout exitoso"}
+    )
