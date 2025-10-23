@@ -15,12 +15,12 @@ load_dotenv()
 import os
 
 
-database_url = os.getenv("HOST_FRONTEND", "http://localhost:3000")
+origin_url = os.getenv("HOST_FRONTEND")
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[database_url],  # Prueba con "*" y luego restríngelo a tu frontend
+    allow_origins=[origin_url, 'https://goproclass.vercel.app'],  # Prueba con "*" y luego restríngelo a tu frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
