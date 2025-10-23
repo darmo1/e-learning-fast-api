@@ -104,8 +104,8 @@ async def login(response: Response, form_data: LoginRequest, db: SessionDeep):
         content={
             "success": True,
             "message": "Login exitoso",
-            # "access_token": access_token,
-            # "refresh_token": refresh_token,
+            "access_token": access_token
+            #"refresh_token": refresh_token,
         }
     )  # Creamos la respuesta JSON
     # response.set_cookie(
@@ -127,7 +127,7 @@ async def login(response: Response, form_data: LoginRequest, db: SessionDeep):
     #     # domain=DOMAIN,
     #     path="/",
     # )
-    set_auth_cookies(response, access_token, refresh_token)
+    # set_auth_cookies(response, access_token, refresh_token)
 
     return response  # Retornamos la respuesta con la cookie
 
