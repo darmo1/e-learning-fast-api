@@ -30,7 +30,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 30))
 DOMAIN = os.getenv("DOMAIN", "localhost")
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_EXPIRE_DAYS", 7))
 SECURE_COOKIE = not is_dev()
-COOKIE_SAMESITE = "lax"
+COOKIE_SAMESITE =  "lax" if is_dev() else "none"
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -50,7 +50,7 @@ def set_auth_cookies(
         samesite=COOKIE_SAMESITE,  # 'lax' recomendado
         path="/",  # Accesible en todo el sitio/API
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Tiempo de vida en segundos
-        domain=DOMAIN,  # Omitir para localhost, especificar en prod si es necesario
+        domain=DOMAIN if is_dev() else None  # Omitir para localhost, especificar en prod si es necesario
     )
     if refresh_token:
         response.set_cookie(
@@ -73,7 +73,7 @@ def clear_auth_cookies(response: Response):
     response.delete_cookie(
         key="refresh_token",
         path="/auth/refresh",  # Debe coincidir con el path usado al setear
-        domain=DOMAIN,
+        domain=DOMAIN if is_dev() else None,
     )
 
 
