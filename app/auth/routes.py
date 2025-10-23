@@ -27,12 +27,11 @@ load_dotenv()
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 30))
-DOMAIN = os.getenv("DOMAIN")
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_EXPIRE_DAYS", 7))
 
 SECURE_COOKIE = not is_dev()
 COOKIE_SAMESITE =  "lax" if is_dev() else "none"
-DOMAIN_VALUE = DOMAIN if is_dev() else ".vercel.app"
+DOMAIN_VALUE = None if is_dev() else ".vercel.app"
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -63,18 +62,18 @@ def set_auth_cookies(
             # MUY IMPORTANTE: Limitar el path SOLO al endpoint de refresh
             path="/auth/refresh",
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # Tiempo de vida largo
-            domain=DOMAIN,  # Omitir para localhost, especificar en prod si es necesario
+            domain=DOMAIN_VALUE,  # Omitir para localhost, especificar en prod si es necesario
         )
 
 
 # --- Función Helper para limpiar Cookies ---
 def clear_auth_cookies(response: Response):
     """Limpia/elimina las cookies de autenticación."""
-    response.delete_cookie(key="access_token", path="/", domain=DOMAIN)
+    response.delete_cookie(key="access_token", path="/", domain=DOMAIN_VALUE)
     response.delete_cookie(
         key="refresh_token",
         path="/auth/refresh",  # Debe coincidir con el path usado al setear
-        domain=DOMAIN if is_dev() else None,
+        domain=DOMAIN_VALUE if is_dev() else None,
     )
 
 
