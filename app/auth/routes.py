@@ -210,12 +210,41 @@ def activate_account(token: str, db: SessionDeep):
 
 @auth_router.get("/email-health")
 def email_health():
-    """Diagnóstico del proveedor de email cargado (sin exponer secretos)."""
-    return {
-        "provider": "brevo" if os.getenv("BREVO_API_KEY") else "gmail-smtp",
-        "sender_configured": bool(os.getenv("EMAIL_SENDER")),
-        "smtp_password_configured": bool(os.getenv("EMAIL_PASSWORD")),
+    """Diagnóstico del proveedor de email (solo booleanos, sin exponer secretos)."""
+    import requests as _requests
+
+    api_key = os.getenv("BREVO_API_KEY")
+    sender = (os.getenv("EMAIL_SENDER") or "").strip().lower()
+    info: dict = {
+        "provider": "brevo" if api_key else "gmail-smtp",
+        "sender_configured": bool(sender),
     }
+
+    if api_key:
+        try:
+            account = _requests.get(
+                "https://api.brevo.com/v3/account",
+                headers={"api-key": api_key},
+                timeout=10,
+            )
+            info["brevo_key_valid"] = account.status_code == 200
+
+            senders = _requests.get(
+                "https://api.brevo.com/v3/senders",
+                headers={"api-key": api_key},
+                timeout=10,
+            )
+            if senders.status_code == 200:
+                sender_list = senders.json().get("senders", [])
+                info["sender_verified_in_brevo"] = any(
+                    s.get("email", "").strip().lower() == sender and s.get("active")
+                    for s in sender_list
+                )
+        except Exception:
+            logger.exception("email-health: no se pudo consultar Brevo")
+            info["brevo_reachable"] = False
+
+    return info
 
 
 @auth_router.post("/forgot-password")
