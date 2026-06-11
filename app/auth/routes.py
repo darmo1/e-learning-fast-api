@@ -1,94 +1,118 @@
-from fastapi import APIRouter, Cookie, HTTPException, Depends, Response
-from fastapi.responses import JSONResponse
-
-# from fastapi.security import OAuth2PasswordRequestForm
+import logging
+import os
 from datetime import timedelta
+
+from dotenv import load_dotenv
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from sqlmodel import select
+
+from app.auth.activation_service import send_activation_email
 from app.auth.models import LoginRequest
 from app.auth.services import (
+    create_access_token,
+    create_activation_token,
     create_refresh_token,
     get_email_from_refresh_token,
+    get_user_id_from_activation_token,
+    hash_password,
     is_valid_refresh_token,
     verify_password,
-    create_access_token,
-    hash_password,
 )
-from app.auth.utils import is_dev
-from app.users.schemas import UserCreate, UserOut
-from app.users.models import User
-from app.users.services import get_user_by_email
-from sqlmodel import Session, select
+from app.auth.utils import is_dev, login_rate_limiter, register_rate_limiter
 from app.common.database import SessionDeep
-import os
-from dotenv import load_dotenv
-from app.auth.activation_service import send_activation_email
+from app.users.models import User
+from app.users.schemas import UserCreate, UserOut
+from app.users.services import get_user_by_email
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 30))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_EXPIRE_DAYS", 7))
+# Si se activa, el login exige cuenta verificada por email
+REQUIRE_EMAIL_ACTIVATION = os.getenv("REQUIRE_EMAIL_ACTIVATION", "false").lower() == "true"
 
 SECURE_COOKIE = not is_dev()
-COOKIE_SAMESITE =  "lax" if is_dev() else "none"
-DOMAIN_VALUE = None if is_dev() else ".vercel.app"
+COOKIE_SAMESITE = "lax" if is_dev() else "none"
+# Nota: ".vercel.app" está en la Public Suffix List, los navegadores rechazan
+# cookies con ese Domain. Usar cookie host-only (None) salvo dominio propio.
+DOMAIN_VALUE = os.getenv("COOKIE_DOMAIN") or None
+REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
+
+# Hash dummy para igualar el tiempo de respuesta cuando el email no existe
+# (evita enumeración de usuarios por timing)
+_DUMMY_HASH = hash_password("dummy-password-for-timing")
+
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-# --- Función Helper para establecer Cookies ---
 def set_auth_cookies(
     response: Response,
     access_token: str,
-    refresh_token: str | None = None,  # Hacer refresh_token opcional
+    refresh_token: str | None = None,
 ):
     """Establece las cookies de autenticación en la respuesta."""
     response.set_cookie(
         key="access_token",
         value=access_token,
-        httponly=True,  # ¡Esencial! No accesible por JS
-        secure=SECURE_COOKIE,  # True en producción (HTTPS)
-        samesite=COOKIE_SAMESITE,  # 'lax' recomendado
-        path="/",  # Accesible en todo el sitio/API
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Tiempo de vida en segundos
-        domain= DOMAIN_VALUE # Omitir para localhost, especificar en prod si es necesario
+        httponly=True,
+        secure=SECURE_COOKIE,
+        samesite=COOKIE_SAMESITE,
+        path="/",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        domain=DOMAIN_VALUE,
     )
     if refresh_token:
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
-            httponly=True,  # ¡Esencial!
-            secure=SECURE_COOKIE,  # True en producción (HTTPS)
-            samesite=COOKIE_SAMESITE,  # 'lax' recomendado
-            # MUY IMPORTANTE: Limitar el path SOLO al endpoint de refresh
-            path="/auth/refresh",
-            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # Tiempo de vida largo
-            domain=DOMAIN_VALUE,  # Omitir para localhost, especificar en prod si es necesario
+            httponly=True,
+            secure=SECURE_COOKIE,
+            samesite=COOKIE_SAMESITE,
+            # Limitar el path SOLO al endpoint de refresh
+            path=REFRESH_COOKIE_PATH,
+            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            domain=DOMAIN_VALUE,
         )
 
 
-# --- Función Helper para limpiar Cookies ---
 def clear_auth_cookies(response: Response):
     """Limpia/elimina las cookies de autenticación."""
     response.delete_cookie(key="access_token", path="/", domain=DOMAIN_VALUE)
     response.delete_cookie(
         key="refresh_token",
-        path="/auth/refresh",  # Debe coincidir con el path usado al setear
-        domain=DOMAIN_VALUE if is_dev() else None,
+        path=REFRESH_COOKIE_PATH,
+        domain=DOMAIN_VALUE,
     )
 
 
 @auth_router.post("/login")
-async def login(response: Response, form_data: LoginRequest, db: SessionDeep):
+async def login(request: Request, form_data: LoginRequest, db: SessionDeep):
     """Endpoint para iniciar sesión y obtener un JWT."""
+    login_rate_limiter.check(request)
+
     user = await get_user_by_email(db, form_data.email)
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user:
+        # Verificación dummy para que la respuesta tarde lo mismo que con un
+        # usuario real (anti enumeración por timing)
+        verify_password(form_data.password, _DUMMY_HASH)
         return JSONResponse(
             status_code=400,
             content={"success": False, "message": "Invalid credentials"},
         )
-    # HTTPException(
-    #         status_code=400, detail={"success": False, "message": "Invalid credentials"},
-    #     )
+
+    if not verify_password(form_data.password, user.hashed_password):
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "Invalid credentials"},
+        )
+
+    if REQUIRE_EMAIL_ACTIVATION and not user.is_active:
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Cuenta no activada, revisa tu correo"},
+        )
 
     access_token = create_access_token(
         data={"sub": user.email},
@@ -100,41 +124,21 @@ async def login(response: Response, form_data: LoginRequest, db: SessionDeep):
         expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
 
-    response = JSONResponse(
+    # El FE (server action) setea las cookies con los tokens del body
+    return JSONResponse(
         content={
             "success": True,
             "message": "Login exitoso",
-            "access_token": access_token
-            #"refresh_token": refresh_token,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
         }
-    )  # Creamos la respuesta JSON
-    # response.set_cookie(
-    #     key="access_token",
-    #     value=access_token,
-    #     httponly=True,
-    #     secure=not is_dev(),  # Debe ser True si usas HTTPS
-    #     samesite="none" if is_dev() else "none",
-    #     # domain=DOMAIN,
-    #     path="/",
-    # )
-
-    # response.set_cookie(
-    #     key="refresh_token",
-    #     value=refresh_token,
-    #     httponly=True,
-    #     secure=not is_dev(),  # Debe ser True si usas HTTPS
-    #     samesite="none" if is_dev() else "none",
-    #     # domain=DOMAIN,
-    #     path="/",
-    # )
-    # set_auth_cookies(response, access_token, refresh_token)
-
-    return response  # Retornamos la respuesta con la cookie
+    )
 
 
 @auth_router.post("/register", response_model=UserOut)
-def register(user_data: UserCreate, db: SessionDeep):
-    # Verificar si el usuario ya existe
+def register(request: Request, user_data: UserCreate, db: SessionDeep):
+    register_rate_limiter.check(request)
+
     statement = select(User).where(User.email == user_data.email)
     existing_user = db.exec(statement).first()
 
@@ -147,37 +151,63 @@ def register(user_data: UserCreate, db: SessionDeep):
             },
         )
 
+    # Registro corporativo: valida la invitación ANTES de crear el usuario
+    company = None
+    if user_data.invite_token:
+        from app.companies.services import validate_invite_for_registration
+
+        company = validate_invite_for_registration(db, user_data.invite_token)
+
     hashed_password = hash_password(user_data.password)
     user = User(
         email=user_data.email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
         is_active=False,
+        company_id=company.id if company else None,
     )
 
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    # Create token activación
-    token = create_access_token(
-        data={"sub": user.id}, expires_delta=timedelta(hours=24)
-    )
-    # Enviar correo con token de activación
-    send_activation_email(user.email, token)
+    token = create_activation_token(user.id)
+    try:
+        send_activation_email(user.email, token)
+    except Exception:
+        # El registro no debe fallar si el SMTP falla; el usuario puede pedir
+        # reenvío más adelante
+        logger.exception("No se pudo enviar el email de activación a %s", user.email)
 
     return user
 
 
+@auth_router.get("/activate/{token}")
+def activate_account(token: str, db: SessionDeep):
+    """Activa la cuenta a partir del token enviado por email."""
+    user_id = get_user_id_from_activation_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+
+    if not user.is_active:
+        user.is_active = True
+        db.add(user)
+        db.commit()
+
+    return {"success": True, "message": "Cuenta activada"}
+
+
 @auth_router.post("/refresh")
 async def refresh_token(
-    response: Response,  # Inyecta Response para setear la nueva cookie
+    response: Response,
     db: SessionDeep,
     refresh_token: str | None = Cookie(None, alias="refresh_token"),
 ):
-
     if not refresh_token:
-        # No necesitas limpiar cookies aquí, no había refresh token válido
         raise HTTPException(
             status_code=401, detail="Refresh token cookie no encontrada"
         )
@@ -203,14 +233,6 @@ async def refresh_token(
     )
 
     response = JSONResponse(content={"access_token": new_access_token})
-    # response.set_cookie(
-    #     key="access_token",
-    #     value=new_access_token,
-    #     httponly=True,
-    #     secure=not is_dev(),  # Debe ser True si usas HTTPS
-    #     samesite="lax" if is_dev() else "none",
-    #     path="/",
-    # )
     set_auth_cookies(response, new_access_token, None)
     return response
 

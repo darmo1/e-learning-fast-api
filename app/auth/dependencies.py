@@ -1,7 +1,7 @@
 from fastapi import Cookie, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from app.users.services import get_user_by_email
+from app.users.models import User, UserRole
 from app.common.database import SessionDeep
 
 import os
@@ -9,12 +9,9 @@ import os
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-
-#async def get_current_user(db: SessionDeep, token: str = Depends(oauth2_scheme)):
 async def get_current_user(db: SessionDeep, token: str = Cookie(None, alias="access_token")):
-    """Middleware que extrae y valida el usuario del JWT."""
+    """Extrae y valida el usuario del JWT (cookie access_token)."""
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -22,6 +19,11 @@ async def get_current_user(db: SessionDeep, token: str = Cookie(None, alias="acc
         )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Solo tokens de acceso: rechaza refresh/activation tokens usados como access
+        if payload.get("type") not in (None, "access"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+            )
         email: str = payload.get("sub")
         if email is None:
             raise HTTPException(
@@ -42,31 +44,20 @@ async def get_current_user(db: SessionDeep, token: str = Cookie(None, alias="acc
     return user
 
 
+def require_role(*roles: UserRole):
+    """Dependencia que exige que el usuario autenticado tenga uno de los roles dados.
 
-''' cookies
-async def get_current_user(
-    db: SessionDeep,
-    access_token: str = Cookie(None),
-):
-    """Extrae el usuario autenticado desde la cookie `access_token`."""
-    if not access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No token provided in cookies",
-        )
+    Los admin pasan siempre. Uso: Depends(require_role(UserRole.instructor))
+    """
 
-    try:
-        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    async def checker(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role == UserRole.admin or current_user.is_admin:
+            return current_user
+        if current_user.role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para realizar esta acción",
+            )
+        return current_user
 
-    user = await get_user_by_email(db, email)
-
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found")
-
-    return user
-'''
+    return checker

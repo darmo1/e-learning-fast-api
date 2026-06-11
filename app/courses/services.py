@@ -24,8 +24,8 @@ def update_course(
     if not db_course:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
-
-    if db_course.instructor_id != token_data.id:
+    is_admin = getattr(token_data, "is_admin", False)
+    if db_course.instructor_id != token_data.id and not is_admin:
         raise HTTPException(
             status_code=403, detail="No autorizado para editar este curso"
         )

@@ -19,6 +19,8 @@ class User(SQLModel, table=True):
     is_admin: bool = Field(default=False)
     is_active: bool = True
     role: UserRole = Field(default=UserRole.student)
+    # Trabajadores corporativos: empresa a la que pertenecen (registro vía invite link)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
     enrollments: List["Enrollment"] = Relationship(back_populates="user")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

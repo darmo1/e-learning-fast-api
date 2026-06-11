@@ -1,21 +1,23 @@
-from fastapi import APIRouter, HTTPException, Depends
-from app.common.database import SessionDeep, get_session
-from app.courses.schemas import CourseCreate, CourseEdit, CourseResponse, CourseBase
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.auth.dependencies import get_current_user, require_role
+from app.common.database import SessionDeep
 from app.courses import services
-from app.auth.dependencies import get_current_user
+from app.courses.schemas import CourseBase, CourseEdit, CourseResponse
+from app.users.models import User, UserRole
 
 course_router = APIRouter(prefix="/course", tags=["courses"])
 
 
 @course_router.post("/create", response_model=CourseResponse)
 async def create_course(
-    course: CourseBase, db: SessionDeep, token_data: dict = Depends(get_current_user)
+    course: CourseBase,
+    db: SessionDeep,
+    current_user: User = Depends(require_role(UserRole.instructor)),
 ):
-    """Endpoint para crear un curso"""
-
-    # Convertir a diccionario antes de desestructurar
+    """Endpoint para crear un curso (solo instructores/admin)"""
     course_dict = course.model_dump()
-    course_dict["instructor_id"] = token_data.id
+    course_dict["instructor_id"] = current_user.id
 
     return services.create_course(db, course_dict)
 
@@ -25,38 +27,32 @@ async def update_course(
     course_id: int,
     update_data: CourseEdit,
     db: SessionDeep,
-    token_data: dict = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.instructor)),
 ):
-    """Actualizar curso (solo los campos modificados)"""
+    """Actualizar curso (solo el instructor dueño; valida ownership en el service)"""
     course_dict = update_data.model_dump(exclude_unset=True)
-    return services.update_course(db, course_id, course_dict, token_data)
+    return services.update_course(db, course_id, course_dict, current_user)
 
 
 @course_router.get("/")
 async def get_courses_by_user(
-    db: SessionDeep, token_data: dict = Depends(get_current_user)
+    db: SessionDeep, current_user: User = Depends(get_current_user)
 ):
-    user_id = token_data.id
-    return services.get_courses(db, user_id)
+    return services.get_courses(db, current_user.id)
 
 
 @course_router.get("/all", response_model=list[CourseResponse])
 async def get_all_courses(db: SessionDeep):
-    """Endpoint para obtener todos los cursos"""
+    """Endpoint para obtener todos los cursos (catálogo público)"""
     return services.get_all_courses(db)
 
 
 @course_router.get("/instructor")
 async def get_courses_by_instructor(
-    db: SessionDeep, token_data: dict = Depends(get_current_user)
+    db: SessionDeep,
+    current_user: User = Depends(require_role(UserRole.instructor)),
 ):
-    user_id = token_data.id
-    user_role = token_data.role.value
-
-    if user_role is not "instructor":
-        pass
-
-    return services.get_courses_by_instructor(db, user_id)
+    return services.get_courses_by_instructor(db, current_user.id)
 
 
 @course_router.get("/{course_id}", response_model=CourseResponse)

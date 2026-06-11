@@ -1,14 +1,20 @@
-from pydantic import BaseModel
 from typing import Optional
-from sqlmodel import SQLModel
+
+from pydantic import EmailStr
+from sqlmodel import Field, SQLModel
+
 
 class UserBase(SQLModel):
-    email: str
-    full_name: Optional[str] = None
+    email: EmailStr
+    full_name: Optional[str] = Field(default=None, max_length=120)
+
 
 class UserCreate(UserBase):
     '''Añadimos el campo password para que el usuario pueda registrarse'''
-    password: str
+    password: str = Field(min_length=8, max_length=128)
+    # Registro corporativo: token del link de invitación de una empresa
+    invite_token: Optional[str] = Field(default=None, max_length=64)
+
 
 class UserOut(UserBase):
     id: int
@@ -16,4 +22,4 @@ class UserOut(UserBase):
     is_active: bool
 
     class Config:
-        from_attributes = True #Esta opción permite que los objetos SQLModel se puedan convertir a Pydantic models de manera sencilla
+        from_attributes = True  # Permite convertir objetos SQLModel a este schema

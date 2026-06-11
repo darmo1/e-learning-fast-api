@@ -6,7 +6,14 @@ load_dotenv()
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL, echo=True)
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL no está definido")
+
+# echo solo en desarrollo: en producción loguea cada query (datos sensibles)
+engine = create_engine(
+    DATABASE_URL,
+    echo=os.getenv("ENVIRONMENT", "development").lower() == "development",
+)
 
 #Create tables
 def create_all_tables(app: FastAPI):
