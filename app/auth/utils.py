@@ -39,3 +39,4 @@ class InMemoryRateLimiter:
 
 login_rate_limiter = InMemoryRateLimiter(max_attempts=10, window_seconds=300)
 register_rate_limiter = InMemoryRateLimiter(max_attempts=5, window_seconds=3600)
+forgot_password_rate_limiter = InMemoryRateLimiter(max_attempts=5, window_seconds=3600)

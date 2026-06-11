@@ -32,6 +32,30 @@ def create_access_token( data: dict, expires_delta: timedelta = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def create_password_reset_token(user, expires_delta: timedelta = timedelta(minutes=30)):
+    """Token de reset de un solo uso: incluye una huella del hash actual de la
+    contraseña, así deja de ser válido apenas la contraseña cambia."""
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode = {
+        "sub": str(user.id),
+        "exp": expire,
+        "type": "password_reset",
+        "fp": user.hashed_password[-12:],
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def get_user_id_from_reset_token(token: str) -> tuple[int, str] | None:
+    """Devuelve (user_id, fingerprint) si el token de reset es válido."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "password_reset":
+            return None
+        return int(payload.get("sub")), payload.get("fp", "")
+    except (JWTError, TypeError, ValueError):
+        return None
+
+
 def create_activation_token(user_id: int, expires_delta: timedelta = timedelta(hours=24)):
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {"sub": str(user_id), "exp": expire, "type": "activation"}

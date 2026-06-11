@@ -3,23 +3,30 @@ import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Cookie, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlmodel import select
 
-from app.auth.activation_service import send_activation_email
-from app.auth.models import LoginRequest
+from app.auth.activation_service import send_activation_email, send_password_reset_email
+from app.auth.models import ForgotPasswordRequest, LoginRequest, ResetPasswordRequest
 from app.auth.services import (
     create_access_token,
     create_activation_token,
+    create_password_reset_token,
     create_refresh_token,
     get_email_from_refresh_token,
     get_user_id_from_activation_token,
+    get_user_id_from_reset_token,
     hash_password,
     is_valid_refresh_token,
     verify_password,
 )
-from app.auth.utils import is_dev, login_rate_limiter, register_rate_limiter
+from app.auth.utils import (
+    forgot_password_rate_limiter,
+    is_dev,
+    login_rate_limiter,
+    register_rate_limiter,
+)
 from app.common.database import SessionDeep
 from app.users.models import User
 from app.users.schemas import UserCreate, UserOut
@@ -199,6 +206,62 @@ def activate_account(token: str, db: SessionDeep):
         db.commit()
 
     return {"success": True, "message": "Cuenta activada"}
+
+
+@auth_router.post("/forgot-password")
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    db: SessionDeep,
+    background_tasks: BackgroundTasks,
+):
+    """Solicita el restablecimiento de contraseña.
+
+    Siempre responde igual, exista o no la cuenta (anti enumeración). El email
+    se envía en background para no filtrar la existencia por tiempo de respuesta.
+    """
+    forgot_password_rate_limiter.check(request)
+
+    user = await get_user_by_email(db, body.email)
+    if user:
+        token = create_password_reset_token(user)
+
+        def _send(email: str, reset_token: str):
+            try:
+                send_password_reset_email(email, reset_token)
+            except Exception:
+                logger.exception("No se pudo enviar el email de reset a %s", email)
+
+        background_tasks.add_task(_send, user.email, token)
+
+    return {
+        "success": True,
+        "message": "Si el correo está registrado, te enviamos un enlace para restablecer tu contraseña",
+    }
+
+
+@auth_router.post("/reset-password")
+async def reset_password(request: Request, body: ResetPasswordRequest, db: SessionDeep):
+    """Restablece la contraseña con un token de un solo uso (30 min)."""
+    login_rate_limiter.check(request)
+
+    result = get_user_id_from_reset_token(body.token)
+    if result is None:
+        raise HTTPException(status_code=400, detail="Enlace inválido o expirado")
+
+    user_id, fingerprint = result
+    user = db.get(User, user_id)
+    # El fingerprint ata el token al hash actual: si la contraseña ya cambió
+    # (o el token ya se usó), deja de ser válido
+    if not user or user.hashed_password[-12:] != fingerprint:
+        raise HTTPException(status_code=400, detail="Enlace inválido o expirado")
+
+    user.hashed_password = hash_password(body.new_password)
+    db.add(user)
+    db.commit()
+
+    logger.info("Contraseña restablecida para el usuario %s", user.id)
+    return {"success": True, "message": "Contraseña actualizada, ya puedes iniciar sesión"}
 
 
 @auth_router.post("/refresh")

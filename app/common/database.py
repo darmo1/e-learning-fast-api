@@ -10,9 +10,13 @@ if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL no está definido")
 
 # echo solo en desarrollo: en producción loguea cada query (datos sensibles)
+# pool_pre_ping: Neon (serverless) suspende y corta conexiones inactivas del
+# pool; sin esto la primera request tras la pausa usa una conexión muerta -> 500
 engine = create_engine(
     DATABASE_URL,
     echo=os.getenv("ENVIRONMENT", "development").lower() == "development",
+    pool_pre_ping=True,
+    pool_recycle=300,
 )
 
 #Create tables
