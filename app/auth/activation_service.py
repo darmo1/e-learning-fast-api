@@ -1,13 +1,44 @@
+import logging
 import os
 import smtplib
 from email.message import EmailMessage
 
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
+
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
-def _send_email(to: str, subject: str, body: str):
+def _send_via_brevo(to: str, subject: str, body: str):
+    """Envío por la API HTTP de Brevo (preferido: los hostings serverless
+    suelen bloquear puertos SMTP; la API va por 443)."""
+    api_key = os.getenv("BREVO_API_KEY")
+    sender_email = os.getenv("EMAIL_SENDER")
+    sender_name = os.getenv("EMAIL_SENDER_NAME", "GoProClass")
+
+    response = requests.post(
+        BREVO_API_URL,
+        headers={"api-key": api_key, "content-type": "application/json"},
+        json={
+            "sender": {"email": sender_email, "name": sender_name},
+            "to": [{"email": to}],
+            "subject": subject,
+            "textContent": body,
+        },
+        timeout=10,
+    )
+    if response.status_code >= 300:
+        raise RuntimeError(
+            f"Brevo rechazó el envío ({response.status_code}): {response.text[:300]}"
+        )
+    logger.info("Email enviado a %s vía Brevo (%s)", to, response.status_code)
+
+
+def _send_via_gmail_smtp(to: str, subject: str, body: str):
+    """Fallback legado: SMTP de Gmail con app password."""
     sender = os.getenv("EMAIL_SENDER")
     password = os.getenv("EMAIL_PASSWORD")
     if not sender or not password:
@@ -23,6 +54,13 @@ def _send_email(to: str, subject: str, body: str):
         server.starttls()
         server.login(sender, password)
         server.send_message(msg)
+
+
+def _send_email(to: str, subject: str, body: str):
+    if os.getenv("BREVO_API_KEY"):
+        _send_via_brevo(to, subject, body)
+    else:
+        _send_via_gmail_smtp(to, subject, body)
 
 
 def send_activation_email(email: str, token: str):
