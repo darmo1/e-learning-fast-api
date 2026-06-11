@@ -5,6 +5,8 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.analytics.routes import analytics_router
 from app.auth.routes import auth_router
@@ -12,7 +14,7 @@ from app.auth.utils import is_dev
 from app.checkout.routes import checkout_router
 from app.comments.routes import comments_router
 from app.companies.routes import companies_router
-from app.common.database import create_all_tables
+from app.common.database import create_all_tables, engine
 from app.courses.routes import course_router
 from app.enrollments.routes import enrollment_router
 from app.lessons.routes import lessons_router
@@ -62,4 +64,14 @@ def root():
 
 @app.get("/healthcheck")
 def healthcheck():
-    return {"status": "ok"}
+    """Healthcheck que toca la BD: el intento de conexión despierta a Neon
+    si está suspendida. El FE lo llama al cargar para precalentarla."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "up"}
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "database": "down"},
+        )
