@@ -208,6 +208,16 @@ def activate_account(token: str, db: SessionDeep):
     return {"success": True, "message": "Cuenta activada"}
 
 
+@auth_router.get("/email-health")
+def email_health():
+    """Diagnóstico del proveedor de email cargado (sin exponer secretos)."""
+    return {
+        "provider": "brevo" if os.getenv("BREVO_API_KEY") else "gmail-smtp",
+        "sender_configured": bool(os.getenv("EMAIL_SENDER")),
+        "smtp_password_configured": bool(os.getenv("EMAIL_PASSWORD")),
+    }
+
+
 @auth_router.post("/forgot-password")
 async def forgot_password(
     request: Request,
