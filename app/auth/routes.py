@@ -3,7 +3,7 @@ import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlmodel import select
 
@@ -21,6 +21,7 @@ from app.auth.services import (
     is_valid_refresh_token,
     verify_password,
 )
+from app.auth.dependencies import get_current_user
 from app.auth.utils import (
     forgot_password_rate_limiter,
     is_dev,
@@ -206,6 +207,35 @@ def activate_account(token: str, db: SessionDeep):
         db.commit()
 
     return {"success": True, "message": "Cuenta activada"}
+
+
+@auth_router.post("/resend-activation")
+def resend_activation(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Reenvía el correo de activación al usuario autenticado.
+
+    Permite completar la verificación a cuentas que se registraron pero nunca
+    recibieron (o perdieron) el email original.
+    """
+    forgot_password_rate_limiter.check(request)
+
+    if current_user.is_active:
+        return {"success": True, "message": "La cuenta ya está activada"}
+
+    token = create_activation_token(current_user.id)
+    try:
+        send_activation_email(current_user.email, token)
+    except Exception:
+        logger.exception(
+            "No se pudo reenviar el email de activación a %s", current_user.email
+        )
+        raise HTTPException(
+            status_code=502, detail="No se pudo enviar el correo, inténtalo más tarde"
+        )
+
+    return {"success": True, "message": "Te enviamos un nuevo correo de activación"}
 
 
 @auth_router.get("/email-health")
