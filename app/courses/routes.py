@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.dependencies import get_current_user, require_role
 from app.common.database import SessionDeep
@@ -36,15 +36,33 @@ async def update_course(
 
 @course_router.get("/")
 async def get_courses_by_user(
-    db: SessionDeep, current_user: User = Depends(get_current_user)
+    db: SessionDeep,
+    current_user: User = Depends(get_current_user),
+    search: str | None = Query(default=None, max_length=120),
+    category: str | None = Query(default=None, max_length=80),
 ):
-    return services.get_courses(db, current_user.id)
+    """Catálogo para usuarios logueados: excluye los cursos ya inscritos."""
+    return services.get_courses(db, current_user.id, search, category)
 
 
 @course_router.get("/all", response_model=list[CourseResponse])
-async def get_all_courses(db: SessionDeep):
-    """Endpoint para obtener todos los cursos (catálogo público)"""
-    return services.get_all_courses(db)
+async def get_all_courses(
+    db: SessionDeep,
+    search: str | None = Query(default=None, max_length=120),
+    category: str | None = Query(default=None, max_length=80),
+):
+    """Catálogo público con búsqueda por texto y filtro por categoría"""
+    return services.get_all_courses(db, search, category)
+
+
+@course_router.get("/categories", response_model=list[str])
+async def get_categories(db: SessionDeep):
+    """Categorías con cursos publicados (para los filtros del catálogo).
+
+    Nota: debe declararse antes de /{course_id} para que "categories" no se
+    intente parsear como id.
+    """
+    return services.get_categories(db)
 
 
 @course_router.get("/instructor")

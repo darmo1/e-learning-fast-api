@@ -1,5 +1,6 @@
 from fastapi import HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
+from app.auth.permissions import is_admin_user
 from app.courses.models import Course
 from app.courses.schemas import CourseCreate, CourseResponse
 from app.common.database import SessionDeep
@@ -24,8 +25,7 @@ def update_course(
     if not db_course:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
-    is_admin = getattr(token_data, "is_admin", False)
-    if db_course.instructor_id != token_data.id and not is_admin:
+    if db_course.instructor_id != token_data.id and not is_admin_user(token_data):
         raise HTTPException(
             status_code=403, detail="No autorizado para editar este curso"
         )
@@ -47,16 +47,48 @@ def get_course(db: SessionDeep, course_id: int) -> CourseResponse:
     return course
 
 
-def get_courses(db: SessionDeep, user_id: int):
+def _apply_catalog_filters(query, search: str | None, category: str | None):
+    """Filtros compartidos del catálogo: texto en título/descripción y categoría."""
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        query = query.where(
+            func.lower(Course.title).like(pattern)
+            | func.lower(Course.description).like(pattern)
+        )
+    if category and category.strip():
+        query = query.where(func.lower(Course.category) == category.strip().lower())
+    return query
+
+
+def get_courses(
+    db: SessionDeep,
+    user_id: int,
+    search: str | None = None,
+    category: str | None = None,
+):
     subquery = select(Enrollment.course_id).where(Enrollment.user_id == user_id)
-    courses = db.exec(select(Course).where(Course.id.notin_(subquery))).all()
-    return courses
+    query = _apply_catalog_filters(
+        select(Course).where(Course.id.notin_(subquery)), search, category
+    )
+    return db.exec(query.order_by(Course.created_at.desc())).all()
 
 
-def get_all_courses(db: SessionDeep) -> list[CourseResponse]:
-    """Obtenemos todos los cursos de la base de datos"""
-    courses = db.exec(select(Course)).all()
-    return courses
+def get_all_courses(
+    db: SessionDeep,
+    search: str | None = None,
+    category: str | None = None,
+) -> list[CourseResponse]:
+    """Catálogo público con búsqueda por texto y filtro por categoría"""
+    query = _apply_catalog_filters(select(Course), search, category)
+    return db.exec(query.order_by(Course.created_at.desc())).all()
+
+
+def get_categories(db: SessionDeep) -> list[str]:
+    """Categorías distintas con al menos un curso, para los filtros del catálogo"""
+    rows = db.exec(
+        select(Course.category).distinct().order_by(Course.category)
+    ).all()
+    return [row for row in rows if row and row.strip()]
 
 
 def get_courses_by_instructor(db: SessionDeep, user_id: int):
