@@ -19,6 +19,7 @@ from app.courses.routes import course_router
 from app.enrollments.routes import enrollment_router
 from app.lessons.routes import lessons_router
 from app.payments.routes import payments_router
+from app.reviews.routes import reviews_router
 from app.users.routes import user_router
 
 allowed_origins = [
@@ -55,6 +56,7 @@ app.include_router(payments_router, prefix=api_v1, tags=["payments"])
 app.include_router(companies_router, prefix=api_v1, tags=["companies"])
 app.include_router(analytics_router, prefix=api_v1, tags=["analytics"])
 app.include_router(admin_router, prefix=api_v1, tags=["admin"])
+app.include_router(reviews_router, prefix=api_v1, tags=["reviews"])
 
 
 @app.get("/")

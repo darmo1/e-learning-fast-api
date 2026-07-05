@@ -18,6 +18,9 @@ class CourseCreate(CourseBase):
 
 class CourseResponse(CourseBase):
     id: int
+    # Agregados de reseñas (None/0 si el curso aún no tiene)
+    rating_avg: Optional[float] = None
+    rating_count: int = 0
 
     class Config:
         from_attributes = True  # Esta opción permite que los objetos SQLModel se puedan convertir a Pydantic models de manera sencilla

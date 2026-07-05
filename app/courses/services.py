@@ -60,6 +60,36 @@ def _apply_catalog_filters(query, search: str | None, category: str | None):
     return query
 
 
+def _catalog_query(search: str | None, category: str | None):
+    """Select de catálogo con promedio y cantidad de reseñas por curso."""
+    from app.reviews.models import CourseReview
+
+    ratings = (
+        select(
+            CourseReview.course_id.label("course_id"),
+            func.avg(CourseReview.rating).label("rating_avg"),
+            func.count(CourseReview.id).label("rating_count"),
+        )
+        .group_by(CourseReview.course_id)
+        .subquery()
+    )
+    query = select(Course, ratings.c.rating_avg, ratings.c.rating_count).outerjoin(
+        ratings, ratings.c.course_id == Course.id
+    )
+    return _apply_catalog_filters(query, search, category)
+
+
+def _serialize_catalog_rows(rows) -> list[dict]:
+    return [
+        {
+            **course.model_dump(),
+            "rating_avg": round(float(avg), 1) if avg is not None else None,
+            "rating_count": count or 0,
+        }
+        for course, avg, count in rows
+    ]
+
+
 def get_courses(
     db: SessionDeep,
     user_id: int,
@@ -67,10 +97,9 @@ def get_courses(
     category: str | None = None,
 ):
     subquery = select(Enrollment.course_id).where(Enrollment.user_id == user_id)
-    query = _apply_catalog_filters(
-        select(Course).where(Course.id.notin_(subquery)), search, category
-    )
-    return db.exec(query.order_by(Course.created_at.desc())).all()
+    query = _catalog_query(search, category).where(Course.id.notin_(subquery))
+    rows = db.exec(query.order_by(Course.created_at.desc())).all()
+    return _serialize_catalog_rows(rows)
 
 
 def get_all_courses(
@@ -78,9 +107,10 @@ def get_all_courses(
     search: str | None = None,
     category: str | None = None,
 ) -> list[CourseResponse]:
-    """Catálogo público con búsqueda por texto y filtro por categoría"""
-    query = _apply_catalog_filters(select(Course), search, category)
-    return db.exec(query.order_by(Course.created_at.desc())).all()
+    """Catálogo público con búsqueda, categoría y rating agregado"""
+    query = _catalog_query(search, category)
+    rows = db.exec(query.order_by(Course.created_at.desc())).all()
+    return _serialize_catalog_rows(rows)
 
 
 def get_categories(db: SessionDeep) -> list[str]:
