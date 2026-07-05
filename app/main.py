@@ -12,6 +12,7 @@ from app.admin.routes import admin_router
 from app.analytics.routes import analytics_router
 from app.auth.routes import auth_router
 from app.auth.utils import is_dev
+from app.certificates.routes import certificates_router
 from app.comments.routes import comments_router
 from app.companies.routes import companies_router
 from app.common.database import create_all_tables, engine
@@ -57,6 +58,7 @@ app.include_router(companies_router, prefix=api_v1, tags=["companies"])
 app.include_router(analytics_router, prefix=api_v1, tags=["analytics"])
 app.include_router(admin_router, prefix=api_v1, tags=["admin"])
 app.include_router(reviews_router, prefix=api_v1, tags=["reviews"])
+app.include_router(certificates_router, prefix=api_v1, tags=["certificates"])
 
 
 @app.get("/")
