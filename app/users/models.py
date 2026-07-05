@@ -6,9 +6,15 @@ import uuid
 
 
 class UserRole(str, Enum):
+    super_admin = "super_admin"
     admin = "admin"
+    support = "support"
     instructor = "instructor"
     student = "student"
+
+
+# Roles con acceso al portal de administración (CRM)
+STAFF_ROLES = {UserRole.super_admin, UserRole.admin, UserRole.support}
 
 
 class User(SQLModel, table=True):
@@ -22,6 +28,20 @@ class User(SQLModel, table=True):
     # Trabajadores corporativos: empresa a la que pertenecen (registro vía invite link)
     company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
     enrollments: List["Enrollment"] = Relationship(back_populates="user")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class UserPermission(SQLModel, table=True):
+    """Permiso extra otorgado a un usuario de soporte por un admin.
+
+    Los admin/super_admin tienen todos los permisos implícitos; esta tabla
+    solo aplica a usuarios con rol support.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    permission: str = Field(max_length=64)
+    granted_by: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

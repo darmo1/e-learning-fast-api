@@ -1,5 +1,11 @@
 from fastapi import Cookie, Depends, HTTPException, status
 from jose import JWTError, jwt
+
+from app.auth.permissions import (
+    Permission,
+    is_admin_user,
+    user_has_permission,
+)
 from app.users.services import get_user_by_email
 from app.users.models import User, UserRole
 from app.common.database import SessionDeep
@@ -44,14 +50,17 @@ async def get_current_user(db: SessionDeep, token: str = Cookie(None, alias="acc
     return user
 
 
+_is_admin = is_admin_user
+
+
 def require_role(*roles: UserRole):
     """Dependencia que exige que el usuario autenticado tenga uno de los roles dados.
 
-    Los admin pasan siempre. Uso: Depends(require_role(UserRole.instructor))
+    Los admin/super_admin pasan siempre. Uso: Depends(require_role(UserRole.instructor))
     """
 
     async def checker(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role == UserRole.admin or current_user.is_admin:
+        if _is_admin(current_user):
             return current_user
         if current_user.role not in roles:
             raise HTTPException(
@@ -59,5 +68,26 @@ def require_role(*roles: UserRole):
                 detail="No tienes permisos para realizar esta acción",
             )
         return current_user
+
+    return checker
+
+
+def require_permission(permission: Permission):
+    """Dependencia para endpoints del portal admin/CRM.
+
+    - super_admin/admin: pasan siempre.
+    - support: pasa si el permiso es base o le fue otorgado (tabla UserPermission).
+    - resto: 403.
+    """
+
+    async def checker(
+        db: SessionDeep, current_user: User = Depends(get_current_user)
+    ) -> User:
+        if user_has_permission(db, current_user, permission):
+            return current_user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para realizar esta acción",
+        )
 
     return checker

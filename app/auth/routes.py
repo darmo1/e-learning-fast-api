@@ -21,7 +21,7 @@ from app.auth.services import (
     is_valid_refresh_token,
     verify_password,
 )
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_role
 from app.auth.utils import (
     forgot_password_rate_limiter,
     is_dev,
@@ -239,8 +239,8 @@ def resend_activation(
 
 
 @auth_router.get("/email-health")
-def email_health():
-    """Diagnóstico del proveedor de email (solo booleanos, sin exponer secretos)."""
+def email_health(_: User = Depends(require_role())):
+    """Diagnóstico del proveedor de email (solo admin: expone estado de config)."""
     import requests as _requests
 
     api_key = os.getenv("BREVO_API_KEY")

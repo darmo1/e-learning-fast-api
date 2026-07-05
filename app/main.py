@@ -8,10 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.admin.routes import admin_router
 from app.analytics.routes import analytics_router
 from app.auth.routes import auth_router
 from app.auth.utils import is_dev
-from app.checkout.routes import checkout_router
 from app.comments.routes import comments_router
 from app.companies.routes import companies_router
 from app.common.database import create_all_tables, engine
@@ -51,10 +51,10 @@ app.include_router(lessons_router, prefix=api_v1, tags=["lessons"])
 app.include_router(comments_router, prefix=api_v1, tags=["comments"])
 app.include_router(enrollment_router, prefix=api_v1, tags=["enrollments"])
 app.include_router(auth_router, prefix=api_v1, tags=["auth"])
-app.include_router(checkout_router, prefix=api_v1, tags=["checkout"])
 app.include_router(payments_router, prefix=api_v1, tags=["payments"])
 app.include_router(companies_router, prefix=api_v1, tags=["companies"])
 app.include_router(analytics_router, prefix=api_v1, tags=["analytics"])
+app.include_router(admin_router, prefix=api_v1, tags=["admin"])
 
 
 @app.get("/")

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Response
 from sqlmodel import Session
 
-from app.auth.dependencies import require_role
+from app.auth.dependencies import require_permission
+from app.auth.permissions import Permission
 from app.common.database import SessionDeep
 from app.companies import services
 from app.companies.schemas import (
@@ -16,8 +17,8 @@ from app.users.models import User
 
 companies_router = APIRouter(prefix="/companies", tags=["companies"])
 
-# require_role() sin argumentos = solo admin
-AdminUser = Depends(require_role())
+# Admin/super_admin siempre; support solo si le otorgaron companies.manage
+AdminUser = Depends(require_permission(Permission.companies_manage))
 
 
 # ---------- Público: link de invitación ----------

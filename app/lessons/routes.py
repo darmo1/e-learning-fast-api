@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from app.auth.dependencies import get_current_user, require_role
+from app.auth.permissions import is_admin_user
 from app.common.database import SessionDeep
 from app.courses.models import Course
 from app.enrollments.models import Enrollment
@@ -18,7 +19,7 @@ def _check_course_ownership(db: SessionDeep, course_id: int, user: User) -> Cour
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
-    if course.instructor_id != user.id and not user.is_admin:
+    if course.instructor_id != user.id and not is_admin_user(user):
         raise HTTPException(
             status_code=403, detail="No autorizado para gestionar lecciones de este curso"
         )
@@ -68,7 +69,7 @@ def get_lessons_by_course_id(
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
     is_owner = course.instructor_id == current_user.id
-    if not is_owner and not current_user.is_admin:
+    if not is_owner and not is_admin_user(current_user):
         enrollment = db.exec(
             select(Enrollment).where(
                 Enrollment.user_id == current_user.id,
@@ -95,7 +96,7 @@ def _require_enrollment(db: SessionDeep, course_id: int, user: User):
             Enrollment.course_id == course_id,
         )
     ).first()
-    if not enrollment and not user.is_admin:
+    if not enrollment and not is_admin_user(user):
         raise HTTPException(status_code=403, detail="No estás inscrito en este curso")
 
 
