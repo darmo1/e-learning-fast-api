@@ -55,8 +55,34 @@ def _ensure_role_enum_values():
 
 #Create tables
 def create_all_tables(app: FastAPI):
-    SQLModel.metadata.create_all(engine)
-    _ensure_role_enum_values()
+    """Crea tablas y migra el enum al arrancar.
+
+    Los deploys levantan varios workers a la vez y todos ejecutan esto:
+    sin serializar, create_all corre en paralelo y choca con
+    "duplicate key ... pg_type_typname_nsp_index" (visto en prod 2026-07-06,
+    tumbaba el worker y los requests fallaban durante el arranque). Un
+    advisory lock de Postgres serializa el DDL entre workers/replicas.
+    """
+    if engine.dialect.name != "postgresql":
+        SQLModel.metadata.create_all(engine)
+        _ensure_role_enum_values()
+        return
+
+    _DDL_LOCK_KEY = 724488101
+    lock_conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        lock_conn.execute(text(f"SELECT pg_advisory_lock({_DDL_LOCK_KEY})"))
+        SQLModel.metadata.create_all(engine)
+        _ensure_role_enum_values()
+    except Exception:
+        # Otro worker pudo haber creado los objetos primero; no tumbar el
+        # arranque por eso (si la BD está caída, el healthcheck lo delata)
+        logger.exception("create_all_tables falló; se continúa el arranque")
+    finally:
+        try:
+            lock_conn.execute(text(f"SELECT pg_advisory_unlock({_DDL_LOCK_KEY})"))
+        finally:
+            lock_conn.close()
 
 
 
