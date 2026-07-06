@@ -9,6 +9,7 @@ from app.auth.permissions import (
     SUPPORT_BASE_PERMISSIONS,
     effective_permissions,
 )
+from app.common.config import platform_fee_pct
 from app.companies.models import Company
 from app.courses.models import Course
 from app.enrollments.models import Enrollment
@@ -208,6 +209,54 @@ def set_user_permissions(
 
     db.commit()
     return get_user_permissions(db, user_id)
+
+
+def get_payouts(db: Session) -> dict:
+    """Neto a pagar a cada instructor (ventas aprobadas menos comisión).
+
+    Base para liquidaciones manuales; la automatización de pagos es post-MVP.
+    """
+    pct = platform_fee_pct()
+
+    rows = db.exec(
+        select(
+            User.id,
+            User.full_name,
+            User.email,
+            func.count(Order.id).label("sales"),
+            func.coalesce(func.sum(Order.amount), 0).label("gross"),
+        )
+        .join(Course, Course.instructor_id == User.id)
+        .join(Order, Order.course_id == Course.id)
+        .where(Order.status == OrderStatus.approved)
+        .group_by(User.id, User.full_name, User.email)
+        .order_by(func.coalesce(func.sum(Order.amount), 0).desc())
+    ).all()
+
+    items = []
+    total_net = 0.0
+    for instructor_id, full_name, email, sales, gross in rows:
+        gross = float(gross)
+        fee = round(gross * pct / 100, 2)
+        net = round(gross - fee, 2)
+        items.append(
+            {
+                "instructor_id": instructor_id,
+                "instructor_name": full_name or email,
+                "email": email,
+                "sales": sales,
+                "gross": gross,
+                "fee": fee,
+                "net": net,
+            }
+        )
+        total_net += net
+
+    return {
+        "platform_fee_pct": pct,
+        "items": items,
+        "total_net": round(total_net, 2),
+    }
 
 
 def list_orders(

@@ -88,6 +88,15 @@ def set_user_permissions(
     return services.set_user_permissions(db, actor, user_id, body.permissions)
 
 
+@admin_router.get("/payouts")
+def payouts(
+    db: SessionDeep,
+    _: User = Depends(require_permission(Permission.payments_read)),
+):
+    """Liquidaciones: neto por instructor sobre ventas aprobadas."""
+    return services.get_payouts(db)
+
+
 @admin_router.get("/orders")
 def list_orders(
     db: SessionDeep,

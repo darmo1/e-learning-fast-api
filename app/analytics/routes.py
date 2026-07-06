@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends
 
 from app.analytics.schemas import CourseAnalyticsOut
-from app.analytics.services import get_analytics_data, get_analytics_totals
+from app.analytics.services import (
+    get_analytics_data,
+    get_analytics_totals,
+    get_instructor_earnings,
+)
 from app.auth.dependencies import require_role
 from app.common.database import SessionDeep
 from app.users.models import User, UserRole
@@ -25,3 +29,12 @@ def analytics_summary(
     current_user: User = Depends(require_role(UserRole.instructor)),
 ):
     return get_analytics_totals(db, current_user.id)
+
+
+@analytics_router.get("/instructor/earnings")
+def analytics_earnings(
+    db: SessionDeep,
+    current_user: User = Depends(require_role(UserRole.instructor)),
+):
+    """Ventas aprobadas del instructor con desglose de comisión y neto."""
+    return get_instructor_earnings(db, current_user.id)
