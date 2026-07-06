@@ -36,6 +36,27 @@ app = FastAPI(
     openapi_url="/openapi.json" if is_dev() else None,
 )
 
+
+class CollapseSlashesMiddleware:
+    """Colapsa '//' en el path: emails antiguos salieron con links
+    'host//api/...' (HOST_BACKEND con slash final) y el router los 404ea."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and "//" in scope.get("path", ""):
+            scope = dict(scope)
+            path = scope["path"]
+            while "//" in path:
+                path = path.replace("//", "/")
+            scope["path"] = path
+            scope["raw_path"] = path.encode()
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(CollapseSlashesMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

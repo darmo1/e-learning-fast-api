@@ -31,3 +31,14 @@ def test_catalog_includes_rating_fields(client):
     course = client.get("/api/v1/course/all").json()[0]
     assert "rating_avg" in course
     assert "rating_count" in course
+
+
+def test_double_slash_paths_are_collapsed(client):
+    """Los emails antiguos traen links 'host//api/...': el middleware los salva.
+
+    URL absoluta: un path que empieza con '//' lo parsea httpx como URL
+    relativa a protocolo (host='api') y nunca llegaría al server.
+    """
+    assert client.get("http://testserver//api/v1/course/all").status_code == 200
+    r = client.get("http://testserver//api/v1/auth/activate/token-invalido")
+    assert r.status_code == 400  # llega a la ruta (antes: 404)

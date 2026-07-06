@@ -65,7 +65,8 @@ def _send_email(to: str, subject: str, body: str):
 
 def send_activation_email(email: str, token: str):
     """Envía un correo con el link de activación de la cuenta"""
-    base_url = os.getenv("HOST_BACKEND", "http://localhost:3005")
+    # rstrip: un slash final en la env var produce links "//api/..." que 404ean
+    base_url = (os.getenv("HOST_BACKEND") or "http://localhost:3005").rstrip("/")
     activation_link = f"{base_url}/api/v1/auth/activate/{token}"
     _send_email(
         email,
@@ -76,7 +77,7 @@ def send_activation_email(email: str, token: str):
 
 def send_password_reset_email(email: str, token: str):
     """Envía el link de restablecimiento de contraseña (página del frontend)."""
-    base_url = os.getenv("HOST_FRONTEND", "http://localhost:3000")
+    base_url = (os.getenv("HOST_FRONTEND") or "http://localhost:3000").rstrip("/")
     reset_link = f"{base_url}/reset-password?token={token}"
     _send_email(
         email,
