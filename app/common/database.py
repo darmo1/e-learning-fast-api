@@ -16,11 +16,17 @@ if not DATABASE_URL:
 # echo solo en desarrollo: en producción loguea cada query (datos sensibles)
 # pool_pre_ping: Neon (serverless) suspende y corta conexiones inactivas del
 # pool; sin esto la primera request tras la pausa usa una conexión muerta -> 500
+# check_same_thread: los tests usan SQLite y TestClient ejecuta la app en otro
+# hilo; sin esto SQLite rechaza la conexión compartida
+_connect_args = (
+    {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+)
 engine = create_engine(
     DATABASE_URL,
     echo=os.getenv("ENVIRONMENT", "development").lower() == "development",
     pool_pre_ping=True,
     pool_recycle=300,
+    connect_args=_connect_args,
 )
 
 def _ensure_role_enum_values():
