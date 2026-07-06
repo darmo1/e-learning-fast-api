@@ -11,6 +11,9 @@ import sys
 
 from sqlmodel import Session, select
 
+# Importa la app completa: registra TODOS los modelos (las relaciones de
+# SQLModel fallan si solo se importa User sin Enrollment/Course/etc.)
+import app.main  # noqa: F401
 from app.common.database import engine
 from app.users.models import User, UserRole
 
