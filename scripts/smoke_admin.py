@@ -54,10 +54,15 @@ def cookies(email: str) -> dict:
 
 
 with Session(engine) as db:
-    sa = make_user(db, "smoke-sa@test.local", UserRole.super_admin)
-    adm = make_user(db, "smoke-admin@test.local", UserRole.admin)
-    sup = make_user(db, "smoke-support@test.local", UserRole.support)
-    stu = make_user(db, "smoke-student@test.local", UserRole.student)
+    # NOTA: usar un dominio real (example.com) y no .local/.test — el
+    # validador de email del endpoint /auth/login rechaza TLDs reservados
+    # de uso especial, así que un email .local jamás podría iniciar sesión
+    # por la UI aunque exista en la BD (solo estos checks, que inyectan la
+    # cookie directamente, podían "loguearse").
+    sa = make_user(db, "smoke-sa@example.com", UserRole.super_admin)
+    adm = make_user(db, "smoke-admin@example.com", UserRole.admin)
+    sup = make_user(db, "smoke-support@example.com", UserRole.support)
+    stu = make_user(db, "smoke-student@example.com", UserRole.student)
     # Limpia permisos de corridas anteriores
     for row in db.exec(
         select(UserPermission).where(UserPermission.user_id == sup.id)
