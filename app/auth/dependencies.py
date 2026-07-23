@@ -50,6 +50,21 @@ async def get_current_user(db: SessionDeep, token: str = Cookie(None, alias="acc
     return user
 
 
+async def get_current_user_optional(
+    db: SessionDeep, token: str = Cookie(None, alias="access_token")
+) -> User | None:
+    """Como get_current_user pero devuelve None en vez de 401 sin sesión.
+
+    Para endpoints públicos que igual quieren personalizar la respuesta si
+    hay un usuario logueado (p. ej. el listado de feature flags)."""
+    if not token:
+        return None
+    try:
+        return await get_current_user(db, token)
+    except HTTPException:
+        return None
+
+
 _is_admin = is_admin_user
 
 

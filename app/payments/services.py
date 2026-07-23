@@ -11,8 +11,11 @@ from sqlmodel import Session, select
 
 from app.courses.models import Course
 from app.enrollments.models import Enrollment
+from app.feature_flags.services import is_enabled as flag_is_enabled
 from app.payments.models import Order, OrderStatus
 from app.users.models import User
+
+SANDBOX_FLAG_KEY = "ff-checkout-mercado-pago-sandbox"
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -42,6 +45,46 @@ def _get_sdk() -> mercadopago.SDK:
             detail="Pasarela de pagos no configurada (MERCADOPAGO_ACCESS_TOKEN)",
         )
     return mercadopago.SDK(MP_ACCESS_TOKEN)
+
+
+def _enroll_if_needed(db: Session, order: Order) -> None:
+    existing = db.exec(
+        select(Enrollment).where(
+            Enrollment.user_id == order.user_id,
+            Enrollment.course_id == order.course_id,
+        )
+    ).first()
+    if not existing:
+        db.add(Enrollment(user_id=order.user_id, course_id=order.course_id))
+        logger.info(
+            "Usuario %s inscrito en curso %s por orden %s",
+            order.user_id, order.course_id, order.id,
+        )
+
+
+def _approve_order_in_sandbox(db: Session, order: Order) -> dict:
+    """Flag ff-checkout-mercado-pago-sandbox apagada: aprueba la orden al
+    instante sin llamar a Mercado Pago e inscribe al usuario, para poder
+    probar la compra completa en desarrollo sin credenciales reales."""
+    fake_id = f"sandbox-{order.id}"
+    order.status = OrderStatus.approved
+    order.preference_id = fake_id
+    order.payment_id = fake_id
+    order.updated_at = datetime.now(timezone.utc)
+    db.add(order)
+    _enroll_if_needed(db, order)
+    db.commit()
+
+    logger.info(
+        "Orden %s aprobada por sandbox (flag %s apagada), user=%s course=%s",
+        order.id, SANDBOX_FLAG_KEY, order.user_id, order.course_id,
+    )
+
+    init_point = (
+        f"{FRONTEND_URL}/checkout/success"
+        f"?status=approved&external_reference={order.id}&payment_id={fake_id}"
+    )
+    return {"init_point": init_point, "preference_id": fake_id}
 
 
 def create_checkout_preference(db: Session, course_id: int, user: User) -> dict:
@@ -75,6 +118,9 @@ def create_checkout_preference(db: Session, course_id: int, user: User) -> dict:
     db.add(order)
     db.commit()
     db.refresh(order)
+
+    if not flag_is_enabled(db, SANDBOX_FLAG_KEY, default=True):
+        return _approve_order_in_sandbox(db, order)
 
     preference_data = {
         "items": [
@@ -211,17 +257,6 @@ def process_payment_notification(db: Session, payment_id: str) -> None:
     db.add(order)
 
     if new_status == OrderStatus.approved:
-        existing = db.exec(
-            select(Enrollment).where(
-                Enrollment.user_id == order.user_id,
-                Enrollment.course_id == order.course_id,
-            )
-        ).first()
-        if not existing:
-            db.add(Enrollment(user_id=order.user_id, course_id=order.course_id))
-            logger.info(
-                "Usuario %s inscrito en curso %s por orden %s",
-                order.user_id, order.course_id, order.id,
-            )
+        _enroll_if_needed(db, order)
 
     db.commit()

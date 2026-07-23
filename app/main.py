@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlmodel import Session
 
 from app.admin.routes import admin_router
 from app.analytics.routes import analytics_router
@@ -18,6 +19,8 @@ from app.companies.routes import companies_router
 from app.common.database import create_all_tables, engine
 from app.courses.routes import course_router
 from app.enrollments.routes import enrollment_router
+from app.feature_flags.routes import feature_flags_router
+from app.feature_flags.services import seed_default_flags
 from app.lessons.routes import lessons_router
 from app.payments.routes import payments_router
 from app.reviews.routes import reviews_router
@@ -66,6 +69,10 @@ app.add_middleware(
 )
 
 create_all_tables(app)
+
+with Session(engine) as _db:
+    seed_default_flags(_db)
+
 api_v1 = "/api/v1"
 
 app.include_router(user_router, prefix=api_v1, tags=["users"])
@@ -80,6 +87,7 @@ app.include_router(analytics_router, prefix=api_v1, tags=["analytics"])
 app.include_router(admin_router, prefix=api_v1, tags=["admin"])
 app.include_router(reviews_router, prefix=api_v1, tags=["reviews"])
 app.include_router(certificates_router, prefix=api_v1, tags=["certificates"])
+app.include_router(feature_flags_router, prefix=api_v1, tags=["feature-flags"])
 
 
 @app.get("/")
